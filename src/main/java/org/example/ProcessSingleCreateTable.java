@@ -1,12 +1,16 @@
 package org.example;
 
-import net.sf.jsqlparser.JSQLParserException;
-import net.sf.jsqlparser.parser.CCJSqlParserUtil;
-import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
-import net.sf.jsqlparser.statement.create.table.CreateTable;
-import net.sf.jsqlparser.statement.create.table.Index;
+import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.SQLObjectImpl;
+import com.alibaba.druid.sql.ast.SQLPartition;
+import com.alibaba.druid.sql.ast.SQLPartitionBy;
+import com.alibaba.druid.sql.ast.statement.SQLColumnConstraint;
+import com.alibaba.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.druid.sql.ast.statement.SQLSelectOrderByItem;
+import com.alibaba.druid.sql.dialect.mysql.ast.MySqlKey;
+import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.druid.util.StringUtils;
 
-import javax.xml.stream.events.Characters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -14,123 +18,156 @@ import java.util.stream.Collectors;
 
 public class ProcessSingleCreateTable {
 
-    public static String process(CreateTable createTable) throws JSQLParserException {
-        String tableFullyQualifiedName = createTable.getTable().getFullyQualifiedName();
-        List<ColumnDefinition> columnDefinitions = createTable.getColumnDefinitions();
+    public static String process(MySqlCreateTableStatement createTable) {
 
-        /**
-         * 生成目标sql：表注释
-         */
-        List<String> tableOptionsStrings = createTable.getTableOptionsStrings();
-        String tableCommentSql = null;
-        int commentIndex = tableOptionsStrings.indexOf("COMMENT");
-        if (commentIndex != -1) {
-            tableCommentSql = String.format("COMMENT ON TABLE %s IS %s;", tableFullyQualifiedName,
-                    tableOptionsStrings.get(commentIndex + 2));
-        }
 
-        /**
-         * 生成目标sql：列注释
-         */
-        List<String> columnComments = extractColumnCommentSql(tableFullyQualifiedName, columnDefinitions);
+        String tableFullyQualifiedName = createTable.getTableName().toLowerCase();
+        List<SQLColumnDefinition> columnDefinitions = createTable.getColumnDefinitions();
 
-        /**
-         * 获取主键
-         */
-        Index primaryKey = createTable.getIndexes().stream()
-                .filter((Index index) -> Objects.equals("PRIMARY KEY", index.getType()))
-                .findFirst().orElse(null);
-        if (primaryKey == null) {
-            throw new RuntimeException("Primary key not found");
-        }
 
-        /**
-         * 生成目标sql：第一行的建表语句
-         */
+        //生成目标sql：注释
+        String commentSql = extractColumnCommentSql(tableFullyQualifiedName, createTable.getComment(), columnDefinitions);
+
+
+        //生成目标sql：第一行的建表语句
         String createTableFirstLine = String.format("CREATE TABLE %s (", tableFullyQualifiedName);
 
-        /**
-         * 生成目标sql：主键
-         */
-        String primaryKeyColumnSql = generatePrimaryKeySql(columnDefinitions, primaryKey);
-        /**
-         * 生成目标sql：除了主键之外的其他列
-         */
-        List<String> otherColumnSqlList = generateOtherColumnSql(columnDefinitions, primaryKey);
 
+        //生成目标sql：主键
+        List<String> primaryKeys = createTable.getPrimaryKeyNames();
+        primaryKeys = primaryKeys.stream().map(String::toLowerCase).collect(Collectors.toList());
+        String primaryKeyColumnSql = primaryKeys.isEmpty() ? null : "    primary key (" + String.join(",", primaryKeys) + ")";
 
-        String fullSql = generateFullSql(createTableFirstLine, primaryKeyColumnSql, otherColumnSqlList,
-                tableCommentSql, columnComments);
+        //生成目标sql：所有列
+        String columnSql = generateOtherColumnSql(columnDefinitions);
 
-        return fullSql;
+        //生成分区信息
+        String partitionSql = generatePartitionSql(createTable);
+        //生成索引信息
+        List<MySqlKey> indexes = createTable.getMysqlKeys().stream()
+                .filter((MySqlKey index) -> !Objects.equals("PRIMARY", index.getIndexDefinition().getType()))
+                .collect(Collectors.toList());
+
+        String indexSql = generateIndexSql(indexes, tableFullyQualifiedName);
+
+        //生成完整建表语句
+        return generateFullSql(tableFullyQualifiedName, createTableFirstLine, primaryKeyColumnSql, columnSql,
+                partitionSql, indexSql, commentSql);
     }
 
-    private static String generateFullSql(String createTableFirstLine, String primaryKeyColumnSql,
-                                          List<String> otherColumnSqlList,
-                                          String tableCommentSql, List<String> columnComments) {
+    private static String generateIndexSql(List<MySqlKey> indexes, String tableName) {
+        if (indexes.isEmpty()) {
+            return null;
+        }
+
+        StringBuilder sql = new StringBuilder();
+        for (MySqlKey index : indexes) {
+            sql.append("CREATE ");
+            if ("UNIQUE".equals(index.getIndexDefinition().getType())) {
+                sql.append("UNIQUE ");
+            }
+            List<SQLSelectOrderByItem> columns = index.getIndexDefinition().getColumns();
+            List<String> columnNames = columns.stream().map(sqlSelectOrderByItem -> sqlSelectOrderByItem.toString().toLowerCase()).collect(Collectors.toList());
+            sql.append("INDEX ").append(index.getIndexDefinition().getName().toString().toLowerCase()).append(" ON ").append(tableName.toLowerCase()).append("(").append(String.join(",", columnNames)).append(");\n");
+        }
+        return sql.toString();
+    }
+
+    private static String generatePartitionSql(MySqlCreateTableStatement createTable) {
+        SQLPartitionBy partitioning = createTable.getPartitioning();
+        if (partitioning == null) {
+            return null;
+        }
+        String p = partitioning.toString().split("\\n")[0];
+        String partitionType = p.substring(0, p.indexOf("("));
+        String columnName = p.substring(p.indexOf("(") + 1, p.indexOf(")")).toLowerCase();
+
+        StringBuilder sql = new StringBuilder("PARTITION BY " + partitionType + "(" + columnName + ") (\n");
+        List<SQLPartition> partitions = partitioning.getPartitions();
+        for (int i = 0; i < partitions.size(); i++) {
+            SQLPartition partition = partitions.get(i);
+            sql.append("PARTITION ").append(partition.getName()).append(" ").append(partition.getValues().toString());
+            if (i == partitions.size() - 1) {
+                sql.append("\n");
+            } else {
+                sql.append(",\n");
+            }
+
+        }
+
+        return sql + ")";
+    }
+
+    private static String generateFullSql(String tableName, String createTableFirstLine, String primaryKeyColumnSql,
+                                          String columnSql,
+                                          String partitionSql, String indexSql, String commentSql) {
         StringBuilder builder = new StringBuilder();
+
+        //如果没有drop语句,则在此写建表前注释
+        if (!App.map.containsKey(tableName)) {
+            builder.append("--\n-- Table structure for table:").append(tableName).append("\n--\n");
+        }
         // 建表语句首行
         builder.append(createTableFirstLine)
                 .append("\n");
-        // 主键 须缩进
-        builder.append("    ")
-                .append(primaryKeyColumnSql)
-                .append(",\n");
 
-        // 每一列 缩进
-        for (int i = 0; i < otherColumnSqlList.size(); i++) {
-            if (i != otherColumnSqlList.size() - 1) {
-                builder.append("    ").append(otherColumnSqlList.get(i)).append(",\n");
-            } else {
-                builder.append("    ").append(otherColumnSqlList.get(i)).append("\n");
-            }
+        //列
+        builder.append(columnSql);
+
+        //主键
+        if (primaryKeyColumnSql != null) {
+            builder.append(",\n")
+                    .append(primaryKeyColumnSql);
         }
-        builder.append(");\n");
+        builder.append("\n)");
 
-        // 表的注释
-        if (tableCommentSql != null) {
-            builder.append("\n" + tableCommentSql + "\n");
+        //分区
+        if (partitionSql != null) {
+            builder.append("\n").append(partitionSql);
         }
+        builder.append(";\n\n");
 
-        // 列的注释
-        for (String columnComment : columnComments) {
-            builder.append(columnComment).append("\n");
+        //索引
+        if (indexSql != null) {
+            builder.append(indexSql).append("\n");
         }
 
-        String sql = builder.toString();
-        return sql;
+
+        // 注释
+        if (!StringUtils.isEmpty(commentSql)) {
+            builder.append(commentSql).append("\n");
+        }
+
+        return builder.toString();
     }
 
-    private static List<String> generateOtherColumnSql(List<ColumnDefinition> columnDefinitions, Index primaryKey) {
-        String primaryKeyColumnName = primaryKey.getColumnsNames().get(0);
+    private static String generateOtherColumnSql(List<SQLColumnDefinition> columnDefinitions) {
 
-        List<ColumnDefinition> columnDefinitionList = columnDefinitions.stream()
-                .filter((ColumnDefinition column) -> !Objects.equals(column.getColumnName(), primaryKeyColumnName))
-                .collect(Collectors.toList());
 
-        List<String> sqlList = new ArrayList<String>();
-        for (ColumnDefinition columnDefinition : columnDefinitionList) {
+        StringBuilder columnSql = new StringBuilder(1024);
+        for (int i = 0; i < columnDefinitions.size(); i++) {
+            SQLColumnDefinition columnDefinition = columnDefinitions.get(i);
             // 列名
-            String columnName = columnDefinition.getColumnName();
+            String columnName = columnDefinition.getColumnName().toLowerCase();
 
             // 类型
-            String dataType = columnDefinition.getColDataType().getDataType();
+            String dataType = columnDefinition.getDataType().getName();
             String postgreDataType = DataTypeMapping.MYSQL_TYPE_TO_POSTGRE_TYPE.get(dataType);
             if (postgreDataType == null) {
-                System.out.println(columnDefinition.getColDataType().getArgumentsStringList());
+
                 throw new UnsupportedOperationException("mysql dataType not supported yet. " + dataType);
             }
             // 获取类型后的参数，如varchar(512)中，将获取到512
-            List<String> argumentsStringList = columnDefinition.getColDataType().getArgumentsStringList();
+            List<SQLExpr> argumentsStringList = columnDefinition.getDataType().getArguments();
             String argument = null;
-            if (argumentsStringList != null && argumentsStringList.size() != 0) {
+            if (argumentsStringList != null && !argumentsStringList.isEmpty()) {
                 if (argumentsStringList.size() == 1) {
-                    argument = argumentsStringList.get(0);
+                    argument = argumentsStringList.get(0).toString();
                 } else if (argumentsStringList.size() == 2) {
                     argument = argumentsStringList.get(0) + "," + argumentsStringList.get(1);
                 }
             }
-            if (argument != null && argument.trim().length() != 0) {
+            if (argument != null && !argument.trim().isEmpty()) {
                 if (postgreDataType.equalsIgnoreCase("bigint")
                         || postgreDataType.equalsIgnoreCase("smallint")
                         || postgreDataType.equalsIgnoreCase("int")
@@ -142,117 +179,63 @@ public class ProcessSingleCreateTable {
             }
 
             // 处理默认值，将mysql中的默认值转为pg中的默认值，如mysql的CURRENT_TIMESTAMP转为
-            List<String> specs = columnDefinition.getColumnSpecs();
-            int indexOfDefaultItem = specs.indexOf("DEFAULT");
-            if (indexOfDefaultItem != -1){
-                String mysqlDefault = specs.get(indexOfDefaultItem + 1);
+            SQLExpr specs = columnDefinition.getDefaultExpr();
+
+            if (specs != null) {
+                String mysqlDefault = specs.toString();
                 // 是字符串的情况下，内容可能是数字，也可能不是
-                if (mysqlDefault.startsWith("'") && mysqlDefault.endsWith("'")){
+                if (mysqlDefault.startsWith("'") && mysqlDefault.endsWith("'")) {
                     mysqlDefault = mysqlDefault.replaceAll("'", "");
-                }else {
+                } else {
                     // 不是字符串的话，一般就是mysql中的函数，此时要查找对应的pg函数
                     String postgreDefault = DefaultValueMapping.MYSQL_DEFAULT_TO_POSTGRE_DEFAULT.get(mysqlDefault);
                     if (postgreDefault == null) {
                         throw new UnsupportedOperationException("not supported mysql default:" + mysqlDefault);
                     }
-                    specs.set(indexOfDefaultItem + 1, postgreDefault);
+
                 }
             }
-
-            String sourceSpec = String.join(" ", specs);
-            String targetSpecAboutNull = null;
-            if (sourceSpec.contains("DEFAULT NULL")) {
-                targetSpecAboutNull = "NULL";
-                sourceSpec = sourceSpec.replaceAll("DEFAULT NULL", "");
-            } else if (sourceSpec.contains("NOT NULL")) {
+            String targetSpecAboutNull = "NULL";
+            List<SQLColumnConstraint> constraints = columnDefinition.getConstraints();
+            long notNull = constraints.stream().filter(sqlColumnConstraint -> sqlColumnConstraint.toString().trim().equalsIgnoreCase("NOT NULL")).count();
+            if (notNull > 0) {
                 targetSpecAboutNull = "NOT NULL";
-                sourceSpec = sourceSpec.replaceAll("NOT NULL", "");
             }
 
-            // postgre不支持unsigned
-            sourceSpec = sourceSpec.replaceAll("unsigned", "");
-            // postgre不支持ON UPDATE CURRENT_TIMESTAMP
-            sourceSpec = sourceSpec.replaceAll("ON UPDATE CURRENT_TIMESTAMP", "");
+            String sql = String.format("%s %s %s", columnName, postgreDataType, targetSpecAboutNull);
 
-
-            String sql;
-            if (sourceSpec.trim().length() != 0) {
-                sql = String.format("%s %s %s %s", columnName, postgreDataType, targetSpecAboutNull, sourceSpec.trim());
-            } else {
-                sql = String.format("%s %s %s", columnName, postgreDataType, targetSpecAboutNull);
+            columnSql.append("    ").append(sql);
+            if (i != columnDefinitions.size() - 1) {
+                columnSql.append(",").append("\n");
             }
-            sqlList.add(sql);
         }
-        return sqlList;
+        return columnSql.toString();
     }
 
-    public static boolean isNumeric(String strNum) {
-        if (strNum == null) {
-            return false;
-        }
-        try {
-            double d = Double.parseDouble(strNum);
-        } catch (NumberFormatException nfe) {
-            return false;
-        }
-        return true;
-    }
 
-    private static String generatePrimaryKeySql(List<ColumnDefinition> columnDefinitions, Index primaryKey) {
-        // 仅支持单列主键，不支持多列联合主键
-        String primaryKeyColumnName = primaryKey.getColumnsNames().get(0);
+    private static String extractColumnCommentSql(String tableFullyQualifiedName, SQLExpr comment, List<SQLColumnDefinition> columnDefinitions) {
+        StringBuilder columnComments = new StringBuilder(1024);
 
-        ColumnDefinition primaryKeyColumnDefinition = columnDefinitions.stream()
-                .filter((ColumnDefinition column) -> column.getColumnName().equals(primaryKeyColumnName))
-                .findFirst().orElse(null);
-        if (primaryKeyColumnDefinition == null) {
-            throw new RuntimeException();
-        }
-        String primaryKeyType = null;
-        String dataType = primaryKeyColumnDefinition.getColDataType().getDataType();
-        if (Objects.equals("bigint", dataType)) {
-            primaryKeyType = "bigserial";
-        } else if (Objects.equals("int", dataType)) {
-            primaryKeyType = "serial";
-        } else if (Objects.equals("varchar", dataType)){
-            primaryKeyType = primaryKeyColumnDefinition.getColDataType().toString();
+        if (comment != null) {
+            columnComments.append(String.format("COMMENT ON TABLE %s IS %s;", tableFullyQualifiedName,
+                    comment)).append("\n");
         }
 
-        String sql = String.format("%s %s PRIMARY KEY", primaryKeyColumnName, primaryKeyType);
-
-        return sql;
-    }
-
-    private static List<String> extractColumnCommentSql(String tableFullyQualifiedName, List<ColumnDefinition> columnDefinitions) {
-        List<String> columnComments = new ArrayList<>();
         columnDefinitions
-                .forEach((ColumnDefinition columnDefinition) -> {
-                    List<String> columnSpecStrings = columnDefinition.getColumnSpecs();
+                .forEach((SQLColumnDefinition columnDefinition) -> {
+                    SQLExpr columnSpecStrings = columnDefinition.getComment();
+                    if (columnSpecStrings != null) {
+                        String commentString = columnSpecStrings.toString();
 
-                    int commentIndex = getCommentIndex(columnSpecStrings);
-                    if (commentIndex != -1) {
-                        int commentStringIndex = commentIndex + 1;
-                        String commentString = columnSpecStrings.get(commentStringIndex);
+                        String commentSql = genCommentSql(tableFullyQualifiedName, columnDefinition.getColumnName().toLowerCase(), commentString);
+                        columnComments.append(commentSql).append("\n");
 
-                        String commentSql = genCommentSql(tableFullyQualifiedName, columnDefinition.getColumnName(), commentString);
-                        columnComments.add(commentSql);
-
-                        columnSpecStrings.remove(commentStringIndex);
-                        columnSpecStrings.remove(commentIndex);
                     }
                 });
 
-        return columnComments;
+        return columnComments.toString();
     }
 
-    private static int getCommentIndex(List<String> columnSpecStrings) {
-        for (int i = 0; i < columnSpecStrings.size(); i++) {
-            if ("COMMENT".equalsIgnoreCase(columnSpecStrings.get(i))) {
-                return i;
-            }
-        }
-        return -1;
-    }
 
     private static String genCommentSql(String table, String column, String commentValue) {
         return String.format("COMMENT ON COLUMN %s.%s IS %s;", table, column, commentValue);

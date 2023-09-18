@@ -1,53 +1,80 @@
 package org.example;
 
-import net.sf.jsqlparser.JSQLParserException;
-import net.sf.jsqlparser.parser.CCJSqlParserUtil;
-import net.sf.jsqlparser.statement.Statement;
-import net.sf.jsqlparser.statement.Statements;
-import net.sf.jsqlparser.statement.create.table.CreateTable;
-import net.sf.jsqlparser.statement.drop.Drop;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
+import com.alibaba.druid.DbType;
+import com.alibaba.druid.sql.SQLUtils;
+import com.alibaba.druid.sql.ast.SQLStatement;
+import com.alibaba.druid.sql.ast.statement.SQLDropTableStatement;
+import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.druid.util.JdbcConstants;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 
 /**
  * Hello world!
  */
 public class App {
 
-    public static void main(String[] args) throws JSQLParserException, IOException {
-        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-        InputStream inputStream = contextClassLoader.getResourceAsStream("source-mysql-ddl.txt");
-        if (inputStream == null) {
-            throw new RuntimeException();
+    public static Map<String, String> map = new HashMap<>();
+    public static void main(String[] args) throws IOException {
+        if (args.length != 2) {
+            System.out.println("usage: java -jar xxx.jar sourceFile.sql targetFile.sql");
+            System.exit(0);
         }
-        String sqlContent = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-        sqlContent = sqlContent.replaceAll("`","");
+        if (!Files.exists(Paths.get(args[0]))) {
+            System.out.println("sourceFile not exists!");
+            System.exit(0);
+
+        }
+        List<String> strings = Files.readAllLines(Paths.get(args[0]));
+        boolean have500500 = false;
+        for (int i = 0; i < strings.size(); i++) {
+            String s = strings.get(i).trim();
+            //对于分区信息,mysql默认会增加/*!50500注释,需要去掉
+            if (s.startsWith("/*!50500")) {
+                have500500 = true;
+                s = s.replace("/*!50500", "").trim();
+                strings.set(i, s);
+                continue;
+            }
+            if (have500500 && s.endsWith("*/;")) {
+                have500500 = false;
+                s = s.replace("*/;", ";");
+                strings.set(i, s);
+                continue;
+            }
+        }
+        String sqlContent = String.join("\n", strings);
+        sqlContent = sqlContent.replaceAll("`", "");
 
         StringBuilder totalSql = new StringBuilder();
-        Statements statements = CCJSqlParserUtil.parseStatements(sqlContent);
-        for (Statement statement : statements.getStatements()) {
-            if (statement instanceof CreateTable) {
-                String sql = ProcessSingleCreateTable.process((CreateTable) statement);
-                totalSql.append(sql).append("\n");
-            } else if (statement instanceof Drop) {
-                String sql = ProcessSingleDropTable.process((Drop) statement);
-                totalSql.append(sql).append("\n");
+        DbType dbType = JdbcConstants.MYSQL;
+        List<SQLStatement> statementList = SQLUtils.parseStatements(sqlContent, dbType);
+        for (SQLStatement statement : statementList) {
+            if (statement instanceof MySqlCreateTableStatement) {
+                String sql = ProcessSingleCreateTable.process((MySqlCreateTableStatement) statement);
+                totalSql.append(sql).append("\n\n");
+            } else if (statement instanceof SQLDropTableStatement) {
+                SQLDropTableStatement dropTableStatement = (SQLDropTableStatement) statement;
+                String tableName = dropTableStatement.getName().toString().toLowerCase();
+                map.put(tableName, "");
+                String sql = ProcessSingleDropTable.process(dropTableStatement);
+                totalSql.append(sql).append("\n\n");
             } else {
                 throw new UnsupportedOperationException();
             }
         }
 
-        File destFile = new File(System.getProperty("user.dir"), "target.sql");
-        FileUtils.writeStringToFile(destFile,totalSql.toString(),StandardCharsets.UTF_8);
-        System.out.println(totalSql);
-        System.out.println("file saved to :" + destFile.getAbsolutePath());
+        Files.write(Paths.get(args[1]),totalSql.toString().getBytes(StandardCharsets.UTF_8), StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.CREATE);
+
+        System.out.println("file saved to :" + args[1]);
 
     }
 

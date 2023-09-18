@@ -30,5 +30,7 @@ public class DataTypeMapping {
         MYSQL_TYPE_TO_POSTGRE_TYPE.put("decimal", "numeric");
         MYSQL_TYPE_TO_POSTGRE_TYPE.put("DOUBLE", "DOUBLE PRECISION");
         MYSQL_TYPE_TO_POSTGRE_TYPE.put("float", "real");
+        MYSQL_TYPE_TO_POSTGRE_TYPE.put("json", "json");
+        MYSQL_TYPE_TO_POSTGRE_TYPE.put("timestamp", "timestamp");
     }
 }

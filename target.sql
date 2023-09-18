@@ -1,144 +1,155 @@
-CREATE TABLE xxl_job_info (
-    id serial PRIMARY KEY,
-    job_group int NOT NULL,
-    job_desc varchar(255) NOT NULL,
-    add_time timestamp NULL,
-    update_time timestamp NULL,
-    author varchar(64) NULL,
-    alarm_email varchar(255) NULL,
-    schedule_type varchar(50) NOT NULL DEFAULT 'NONE',
-    schedule_conf varchar(128) NULL,
-    misfire_strategy varchar(50) NOT NULL DEFAULT 'DO_NOTHING',
-    executor_route_strategy varchar(50) NULL,
-    executor_handler varchar(255) NULL,
-    executor_param varchar(512) NULL,
-    executor_block_strategy varchar(50) NULL,
-    executor_timeout int NOT NULL DEFAULT '0',
-    executor_fail_retry_count int NOT NULL DEFAULT '0',
-    glue_type varchar(50) NOT NULL,
-    glue_source text null,
-    glue_remark varchar(128) NULL,
-    glue_updatetime timestamp NULL,
-    child_jobid varchar(255) NULL,
-    trigger_status smallint NOT NULL DEFAULT '0',
-    trigger_last_time bigint NOT NULL DEFAULT '0',
-    trigger_next_time bigint NOT NULL DEFAULT '0'
-);
-COMMENT ON COLUMN xxl_job_info.job_group IS '执行器主键ID';
-COMMENT ON COLUMN xxl_job_info.author IS '作者';
-COMMENT ON COLUMN xxl_job_info.alarm_email IS '报警邮件';
-COMMENT ON COLUMN xxl_job_info.schedule_type IS '调度类型';
-COMMENT ON COLUMN xxl_job_info.schedule_conf IS '调度配置，值含义取决于调度类型';
-COMMENT ON COLUMN xxl_job_info.misfire_strategy IS '调度过期策略';
-COMMENT ON COLUMN xxl_job_info.executor_route_strategy IS '执行器路由策略';
-COMMENT ON COLUMN xxl_job_info.executor_handler IS '执行器任务handler';
-COMMENT ON COLUMN xxl_job_info.executor_param IS '执行器任务参数';
-COMMENT ON COLUMN xxl_job_info.executor_block_strategy IS '阻塞处理策略';
-COMMENT ON COLUMN xxl_job_info.executor_timeout IS '任务执行超时时间，单位秒';
-COMMENT ON COLUMN xxl_job_info.executor_fail_retry_count IS '失败重试次数';
-COMMENT ON COLUMN xxl_job_info.glue_type IS 'GLUE类型';
-COMMENT ON COLUMN xxl_job_info.glue_source IS 'GLUE源代码';
-COMMENT ON COLUMN xxl_job_info.glue_remark IS 'GLUE备注';
-COMMENT ON COLUMN xxl_job_info.glue_updatetime IS 'GLUE更新时间';
-COMMENT ON COLUMN xxl_job_info.child_jobid IS '子任务ID，多个逗号分隔';
-COMMENT ON COLUMN xxl_job_info.trigger_status IS '调度状态：0-停止，1-运行';
-COMMENT ON COLUMN xxl_job_info.trigger_last_time IS '上次调度时间';
-COMMENT ON COLUMN xxl_job_info.trigger_next_time IS '下次调度时间';
-
-CREATE TABLE xxl_job_log (
-    id bigserial PRIMARY KEY,
-    job_group int NOT NULL,
-    job_id int NOT NULL,
-    executor_address varchar(255) NULL,
-    executor_handler varchar(255) NULL,
-    executor_param varchar(512) NULL,
-    executor_sharding_param varchar(20) NULL,
-    executor_fail_retry_count int NOT NULL DEFAULT '0',
-    trigger_time timestamp NULL,
-    trigger_code int NOT NULL,
-    trigger_msg text null,
-    handle_time timestamp NULL,
-    handle_code int NOT NULL,
-    handle_msg text null,
-    alarm_status smallint NOT NULL DEFAULT '0'
-);
-COMMENT ON COLUMN xxl_job_log.job_group IS '执行器主键ID';
-COMMENT ON COLUMN xxl_job_log.job_id IS '任务，主键ID';
-COMMENT ON COLUMN xxl_job_log.executor_address IS '执行器地址，本次执行的地址';
-COMMENT ON COLUMN xxl_job_log.executor_handler IS '执行器任务handler';
-COMMENT ON COLUMN xxl_job_log.executor_param IS '执行器任务参数';
-COMMENT ON COLUMN xxl_job_log.executor_sharding_param IS '执行器任务分片参数，格式如 1/2';
-COMMENT ON COLUMN xxl_job_log.executor_fail_retry_count IS '失败重试次数';
-COMMENT ON COLUMN xxl_job_log.trigger_time IS '调度-时间';
-COMMENT ON COLUMN xxl_job_log.trigger_code IS '调度-结果';
-COMMENT ON COLUMN xxl_job_log.trigger_msg IS '调度-日志';
-COMMENT ON COLUMN xxl_job_log.handle_time IS '执行-时间';
-COMMENT ON COLUMN xxl_job_log.handle_code IS '执行-状态';
-COMMENT ON COLUMN xxl_job_log.handle_msg IS '执行-日志';
-COMMENT ON COLUMN xxl_job_log.alarm_status IS '告警状态：0-默认、1-无需告警、2-告警成功、3-告警失败';
-
-CREATE TABLE xxl_job_log_report (
-    id serial PRIMARY KEY,
-    trigger_day timestamp NULL,
-    running_count int NOT NULL DEFAULT '0',
-    suc_count int NOT NULL DEFAULT '0',
-    fail_count int NOT NULL DEFAULT '0',
-    update_time timestamp NULL
-);
-COMMENT ON COLUMN xxl_job_log_report.trigger_day IS '调度-时间';
-COMMENT ON COLUMN xxl_job_log_report.running_count IS '运行中-日志数量';
-COMMENT ON COLUMN xxl_job_log_report.suc_count IS '执行成功-日志数量';
-COMMENT ON COLUMN xxl_job_log_report.fail_count IS '执行失败-日志数量';
-
-CREATE TABLE xxl_job_logglue (
-    id serial PRIMARY KEY,
-    job_id int NOT NULL,
-    glue_type varchar(50) NULL,
-    glue_source text null,
-    glue_remark varchar(128) NOT NULL,
-    add_time timestamp NULL,
-    update_time timestamp NULL
-);
-COMMENT ON COLUMN xxl_job_logglue.job_id IS '任务，主键ID';
-COMMENT ON COLUMN xxl_job_logglue.glue_type IS 'GLUE类型';
-COMMENT ON COLUMN xxl_job_logglue.glue_source IS 'GLUE源代码';
-COMMENT ON COLUMN xxl_job_logglue.glue_remark IS 'GLUE备注';
-
-CREATE TABLE xxl_job_registry (
-    id serial PRIMARY KEY,
-    registry_group varchar(50) NOT NULL,
-    registry_key varchar(255) NOT NULL,
-    registry_value varchar(255) NOT NULL,
-    update_time timestamp NULL
+--
+-- Table structure for table:pay_details
+--
+CREATE TABLE pay_details (
+    id char(32) NOT NULL,
+    reqdatetime char(17) NOT NULL,
+    resdatetime char(17) NULL,
+    mchid varchar(32) NULL,
+    reqsys varchar(4) NOT NULL,
+    orderno varchar(32) NULL,
+    serial varchar(32) NOT NULL,
+    settledate varchar(8) NOT NULL,
+    orderdate varchar(8) NULL,
+    ordermoney varchar(20) NULL,
+    payment varchar(20) NULL,
+    resultcode varchar(6) NULL,
+    returncode varchar(6) NULL,
+    mchrspcode6 varchar(10) NULL,
+    rspcode2 varchar(6) NULL,
+    payorgrspcode varchar(6) NULL,
+    paysys varchar(20) NULL,
+    paymenttype varchar(50) NULL,
+    activitycode varchar(10) NULL,
+    businesstype varchar(2) NULL,
+    businessline varchar(20) NULL,
+    rcvmchtime varchar(17) NOT NULL,
+    rspmchtime varchar(17) NULL,
+    reqpaytime varchar(17) NULL,
+    rcvpaytime varchar(17) NULL,
+    reqmchtime varchar(17) NULL,
+    createtime timestamp NOT NULL,
+    reserve1 varchar(20) NULL,
+    reserve2 varchar(20) NULL,
+    reserve3 varchar(20) NULL,
+    computerroomip varchar(12) NULL,
+    primary key (settledate,id)
 );
 
-CREATE TABLE xxl_job_group (
-    id serial PRIMARY KEY,
-    app_name varchar(64) NOT NULL,
-    title varchar(12) NOT NULL,
-    address_type smallint NOT NULL DEFAULT '0',
-    address_list text null,
-    update_time timestamp NULL
-);
-COMMENT ON COLUMN xxl_job_group.app_name IS '执行器AppName';
-COMMENT ON COLUMN xxl_job_group.title IS '执行器名称';
-COMMENT ON COLUMN xxl_job_group.address_type IS '执行器地址类型：0=自动注册、1=手动录入';
-COMMENT ON COLUMN xxl_job_group.address_list IS '执行器地址列表，多地址逗号分隔';
+CREATE UNIQUE INDEX index_rcvmchtime ON pay_details(rcvmchtime);
+CREATE INDEX index_settledate ON pay_details(settledate,createtime);
+CREATE INDEX index_createtime ON pay_details(createtime);
+CREATE INDEX index_reqsys ON pay_details(reqsys);
 
-CREATE TABLE xxl_job_user (
-    id serial PRIMARY KEY,
-    username varchar(50) NOT NULL,
-    password varchar(50) NOT NULL,
-    role smallint NOT NULL,
-    permission varchar(255) NULL
-);
-COMMENT ON COLUMN xxl_job_user.username IS '账号';
-COMMENT ON COLUMN xxl_job_user.password IS '密码';
-COMMENT ON COLUMN xxl_job_user.role IS '角色：0-普通用户、1-管理员';
-COMMENT ON COLUMN xxl_job_user.permission IS '权限：执行器ID列表，多个逗号分割';
+COMMENT ON COLUMN pay_details.id IS '主键';
+COMMENT ON COLUMN pay_details.reqdatetime IS '商户请求时间';
+COMMENT ON COLUMN pay_details.resdatetime IS '收到商户结果通知响应时间';
+COMMENT ON COLUMN pay_details.mchid IS '统一支付分配的商户号';
+COMMENT ON COLUMN pay_details.reqsys IS '发起方系统';
+COMMENT ON COLUMN pay_details.orderno IS '商户订单号';
+COMMENT ON COLUMN pay_details.serial IS '交易流水';
+COMMENT ON COLUMN pay_details.settledate IS '结算日期';
+COMMENT ON COLUMN pay_details.orderdate IS '订单日期';
+COMMENT ON COLUMN pay_details.ordermoney IS '订单金额';
+COMMENT ON COLUMN pay_details.payment IS '支付金额';
+COMMENT ON COLUMN pay_details.resultcode IS '业务结果';
+COMMENT ON COLUMN pay_details.returncode IS '返回状态码';
+COMMENT ON COLUMN pay_details.mchrspcode6 IS '商户的结果通知响应，返回值有可能为success或Fail';
+COMMENT ON COLUMN pay_details.rspcode2 IS '同步响应消息到商户';
+COMMENT ON COLUMN pay_details.payorgrspcode IS '支付机构应答码';
+COMMENT ON COLUMN pay_details.paysys IS '支付对接机构(例如金科CMPOS)';
+COMMENT ON COLUMN pay_details.paymenttype IS '支付方式';
+COMMENT ON COLUMN pay_details.activitycode IS '交易编码';
+COMMENT ON COLUMN pay_details.businesstype IS '交易类型QR:查询、RQ:查询退费、OD:支付、RF:退费';
+COMMENT ON COLUMN pay_details.businessline IS '业务线标识,join:聚合支付';
+COMMENT ON COLUMN pay_details.rcvmchtime IS '接收到商户请求时间';
+COMMENT ON COLUMN pay_details.rspmchtime IS '同步响应商户请求时间';
+COMMENT ON COLUMN pay_details.reqpaytime IS '请求支付机构时间';
+COMMENT ON COLUMN pay_details.rcvpaytime IS '接收到支付结果通知时间';
+COMMENT ON COLUMN pay_details.reqmchtime IS '发送结果通知到商户时间';
+COMMENT ON COLUMN pay_details.createtime IS '数据入库时间，默认直接获取数据库时间';
+COMMENT ON COLUMN pay_details.reserve1 IS '预留字段';
+COMMENT ON COLUMN pay_details.reserve2 IS '预留字段';
+COMMENT ON COLUMN pay_details.reserve3 IS '预留字段';
+COMMENT ON COLUMN pay_details.computerroomip IS 'ip地址';
 
-CREATE TABLE xxl_job_lock (
-    lock_name varchar (50) PRIMARY KEY,
+
+
+--
+-- Table structure for table:af_task
+--
+CREATE TABLE af_task (
+    id varchar(64) NOT NULL,
+    name varchar(64) NULL,
+    flowid varchar(64) NULL,
+    flowname varchar(64) NULL,
+    processid varchar(64) NULL,
+    processname varchar(64) NULL,
+    state varchar(20) NULL,
+    variables text NULL,
+    createtime varchar(30) NULL,
+    updatetime varchar(30) NULL,
+    finishtime varchar(30) NULL,
+    settledate varchar(30) NULL,
+    busiline varchar(30) NULL,
+    province varchar(30) NULL,
+    node varchar(60) NULL,
+    message varchar(500) NULL,
+    usetime varchar(200) NULL,
+    primary key (id)
 );
-COMMENT ON COLUMN xxl_job_lock.lock_name IS '锁名称';
+
+COMMENT ON TABLE af_task IS '任务实例表';
+
+
+
+--
+-- Table structure for table:bl_0001_acc_ori_cmpay
+--
+DROP TABLE IF EXISTS bl_0001_acc_ori_cmpay;
+
+CREATE TABLE bl_0001_acc_ori_cmpay (
+    id varchar(50) NOT NULL,
+    busiline varchar(30) NULL,
+    settle_date varchar(30) NOT NULL,
+    province varchar(30) NULL,
+    json json NULL
+)
+PARTITION BY RANGE (settle_date) (
+PARTITION p20220324 VALUES LESS THAN ('20220325'),
+PARTITION p20220325 VALUES LESS THAN ('20220326'),
+PARTITION p20220326 VALUES LESS THAN ('20220327'),
+PARTITION p20220327 VALUES LESS THAN ('20220328'),
+PARTITION p20220328 VALUES LESS THAN ('20220329'),
+PARTITION p20220329 VALUES LESS THAN ('20220330'),
+PARTITION p20220330 VALUES LESS THAN ('20220331'),
+PARTITION p20220331 VALUES LESS THAN ('20220401'),
+PARTITION p20220401 VALUES LESS THAN ('20220402'),
+PARTITION p20220402 VALUES LESS THAN ('20220403'),
+PARTITION p20220403 VALUES LESS THAN ('20220404'),
+PARTITION p20220404 VALUES LESS THAN ('20220405'),
+PARTITION p20220405 VALUES LESS THAN ('20220406'),
+PARTITION p20220406 VALUES LESS THAN ('20220407'),
+PARTITION p20220407 VALUES LESS THAN ('20220408'),
+PARTITION p20220408 VALUES LESS THAN ('20220409'),
+PARTITION p20220409 VALUES LESS THAN ('20220410'),
+PARTITION p20220410 VALUES LESS THAN ('20220411'),
+PARTITION p20220411 VALUES LESS THAN ('20220412'),
+PARTITION p20220412 VALUES LESS THAN ('20220413'),
+PARTITION p20220413 VALUES LESS THAN ('20220414'),
+PARTITION p20220414 VALUES LESS THAN ('20220415'),
+PARTITION p20220415 VALUES LESS THAN ('20220416'),
+PARTITION p20220416 VALUES LESS THAN ('20220417')
+);
+
+CREATE INDEX index_bl_0001_acc_ori_cmpay_settle_date ON bl_0001_acc_ori_cmpay(settle_date);
+
+COMMENT ON TABLE bl_0001_acc_ori_cmpay IS '和包对账数据表';
+COMMENT ON COLUMN bl_0001_acc_ori_cmpay.id IS 'ID';
+COMMENT ON COLUMN bl_0001_acc_ori_cmpay.busiline IS '业务线';
+COMMENT ON COLUMN bl_0001_acc_ori_cmpay.settle_date IS '账期日';
+COMMENT ON COLUMN bl_0001_acc_ori_cmpay.province IS '省编码';
+COMMENT ON COLUMN bl_0001_acc_ori_cmpay.json IS 'JSON集';
+
+
 
