@@ -11,12 +11,18 @@ import com.alibaba.druid.sql.dialect.mysql.ast.MySqlKey;
 import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.druid.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class ProcessSingleCreateTable {
+
+    static Map<String, String> serialMap = new HashMap<>();
+
+    static {
+        serialMap.put("int", "serial");
+        serialMap.put("bigint", "bigserial");
+        serialMap.put("smallint", "smallserial");
+    }
 
     public static String process(MySqlCreateTableStatement createTable) {
 
@@ -68,7 +74,7 @@ public class ProcessSingleCreateTable {
             }
             List<SQLSelectOrderByItem> columns = index.getIndexDefinition().getColumns();
             List<String> columnNames = columns.stream().map(sqlSelectOrderByItem -> sqlSelectOrderByItem.toString().toLowerCase()).collect(Collectors.toList());
-            sql.append("INDEX ").append(index.getIndexDefinition().getName().toString().toLowerCase()).append(" ON ").append(tableName.toLowerCase()).append("(").append(String.join(",", columnNames)).append(");\n");
+            sql.append("INDEX ").append(tableName).append("_").append(index.getIndexDefinition().getName().toString().toLowerCase()).append(" ON ").append(tableName.toLowerCase()).append("(").append(String.join(",", columnNames)).append(");\n");
         }
         return sql.toString();
     }
@@ -201,8 +207,14 @@ public class ProcessSingleCreateTable {
             if (notNull > 0) {
                 targetSpecAboutNull = "NOT NULL";
             }
+            String sql = "";
 
-            String sql = String.format("%s %s %s", columnName, postgreDataType, targetSpecAboutNull);
+            if (columnDefinition.isAutoIncrement()) {
+                sql = columnName + " " + serialMap.get(postgreDataType);
+            } else {
+                sql = columnName + " " + postgreDataType;
+            }
+            sql += " " + targetSpecAboutNull;
 
             columnSql.append("    ").append(sql);
             if (i != columnDefinitions.size() - 1) {
